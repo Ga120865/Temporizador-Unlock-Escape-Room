@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UNLOCK Escape Room — Temporizador</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --negro:#0a0a0a;
+      --amarillo:#ffc107;
+      --amarillo-osc:#e0a800;
+      --gris:#222;
+      --blanco:#ffffff;
+    }
+    html,body{height:100%}
+    body{
+      margin:0; font-family:Poppins, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 70% -10%, #333 0%, var(--negro) 35%), var(--negro);
+      color:var(--blanco);
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    .wrap{
+      width:min(980px, 95vw);
+    }
+    header{
+      display:flex; align-items:center; gap:16px; margin-bottom:20px;
+    }
+    header h1{ font-size: clamp(18px, 3.2vw, 28px); margin:0; font-weight:800; letter-spacing:.02em; }
+
+    .panel{
+      background: linear-gradient(180deg, #111 0%, #0d0d0d 100%);
+      border:1px solid #1f1f1f; border-radius:20px; padding:28px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    }
+    .timer{
+      display:flex; align-items:center; justify-content:center;
+      font-variant-numeric: tabular-nums;
+      font-weight:800; letter-spacing:.02em;
+      font-size: clamp(44px, 11vw, 140px);
+      line-height:1; padding:20px 10px; margin-block:8px 18px;
+      background: #111; border:1px solid #2a2a2a; border-radius:16px;
+      text-shadow: 0 0 28px rgba(255,193,7,.22);
+    }
+    .controls{ display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:12px; }
+    button{
+      appearance:none; border:none; cursor:pointer; padding:14px 16px; border-radius:14px; font-weight:700; font-size:16px;
+      background:var(--amarillo); color:#1b1b1b; box-shadow:0 8px 18px rgba(255,193,7,.22);
+      transition: transform .06s ease, box-shadow .2s ease, background .2s ease;
+    }
+    button:hover{ background:var(--amarillo-osc); }
+    button:active{ transform: translateY(1px); }
+    button[aria-pressed="true"]{ outline:2px solid var(--amarillo); }
+    button.secondary{ background:#171717; color:#f7f7f7; border:1px solid #2a2a2a; box-shadow:none; }
+    button.secondary:hover{ background:#1f1f1f; }
+    .foot{ display:flex; align-items:center; justify-content:space-between; margin-top:16px; color:#cfcfcf; font-size:12px; }
+    .dot{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-inline:6px; background:#2a2a2a; box-shadow:0 0 0 0 rgba(255,193,7,.0); }
+    .dot.live{ background:var(--amarillo); box-shadow:0 0 0 6px rgba(255,193,7,.12); animation:pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse{ 0%{ box-shadow:0 0 0 0 rgba(255,193,7,.22);} 70%{ box-shadow:0 0 0 14px rgba(255,193,7,0);} 100%{ box-shadow:0 0 0 0 rgba(255,193,7,0);} }
+    .brand{ color:#f0c457; font-weight:700; }
+    .small{ font-size:12px; opacity:.9 }
+    .hidden{ position:absolute; inline-size:1px; block-size:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>UNLOCK Escape Room & Parties — <span class="brand">Temporizador</span></h1>
+    </header>
+
+    <section class="panel" aria-label="Temporizador principal de 60 minutos">
+      <div id="time" class="timer" role="timer" aria-live="polite" aria-atomic="true">60:00</div>
+
+      <div class="controls" aria-label="Controles del temporizador">
+        <button id="startBtn" aria-pressed="false">Comenzar</button>
+        <button id="pauseBtn" class="secondary">Pausar</button>
+        <button id="resetBtn" class="secondary" title="Volver a 60:00">Repetir</button>
+        <button id="minus5Btn" class="secondary" title="Restar 5 minutos">− 5 min</button>
+        <button id="fsBtn" class="secondary" title="Pantalla completa">Pantalla completa</button>
+      </div>
+
+      <div class="foot small">
+        <div><span id="liveDot" class="dot" aria-hidden="true"></span><span id="estado">En pausa</span></div>
+        <div>Atajos: <kbd>Espacio</kbd> iniciar/pausar · <kbd>R</kbd> repetir · <kbd>-</kbd> −5 min</div>
+      </div>
+    </section>
+  </main>
+
+  <audio id="ding" preload="auto">
+    <source src="data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQAAZGF0YQAAAAA=" type="audio/mp3" />
+  </audio>
+
+  <script>
+    const DURACION_SEGUNDOS = 60 * 60; // 1 hora
+    let restante = DURACION_SEGUNDOS;
+    let tick = null;
+    let corriendo = false;
+
+    const $time = document.getElementById('time');
+    const $start = document.getElementById('startBtn');
+    const $pause = document.getElementById('pauseBtn');
+    const $reset = document.getElementById('resetBtn');
+    const $minus5 = document.getElementById('minus5Btn');
+    const $fs = document.getElementById('fsBtn');
+    const $estado = document.getElementById('estado');
+    const $dot = document.getElementById('liveDot');
+    const $ding = document.getElementById('ding');
+
+    function formatea(seg){
+      const m = Math.floor(seg/60); const s = seg % 60;
+      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function pinta(){
+      $time.textContent = formatea(restante);
+      if(restante <= 30){ $time.style.textShadow = '0 0 28px rgba(255,87,34,.35)'; }
+      if(restante === 0){
+        document.title = '⌛ ¡Tiempo agotado!';
+        $estado.textContent = '¡Tiempo agotado!';
+        parpadearFin();
+        try { $ding.currentTime = 0; $ding.play().catch(()=>{}); } catch(e){}
+      } else {
+        document.title = `UNLOCK — ${formatea(restante)}`;
+      }
+    }
+
+    function iniciar(){
+      if(corriendo || restante === 0) return;
+      corriendo = true;
+      $start.setAttribute('aria-pressed','true');
+      $dot.classList.add('live');
+      $estado.textContent = 'En marcha';
+      tick = setInterval(()=>{
+        restante = Math.max(0, restante - 1);
+        pinta();
+        if(restante === 0){ pausar(); }
+      }, 1000);
+    }
+
+    function pausar(){
+      corriendo = false;
+      $start.setAttribute('aria-pressed','false');
+      if(tick){ clearInterval(tick); tick = null; }
+      $dot.classList.remove('live');
+      if(restante>0) $estado.textContent = 'En pausa';
+    }
+
+    function repetir(){
+      pausar();
+      restante = DURACION_SEGUNDOS;
+      pinta();
+      $estado.textContent = 'Listo';
+    }
+
+    function menosCinco(){
+      restante = Math.max(0, restante - 5*60);
+      pinta();
+    }
+
+    function parpadearFin(){
+      const el = $time;
+      let on = false; let n=0;
+      const id = setInterval(()=>{
+        on = !on; n++;
+        el.style.color = on ? '#ffeb3b' : '#ffffff';
+        if(n>12){ clearInterval(id); el.style.color = '#ffffff'; }
+      }, 250);
+    }
+
+    function toggleFS(){
+      const elem = document.documentElement;
+      if(!document.fullscreenElement){ elem.requestFullscreen?.(); }
+      else{ document.exitFullscreen?.(); }
+    }
+
+    $start.addEventListener('click', iniciar);
+    $pause.addEventListener('click', pausar);
+    $reset.addEventListener('click', repetir);
+    $minus5.addEventListener('click', menosCinco);
+    $fs.addEventListener('click', toggleFS);
+
+    window.addEventListener('keydown', (e)=>{
+      if(e.code === 'Space'){ e.preventDefault(); corriendo ? pausar() : iniciar(); }
+      if(e.key.toLowerCase() === 'r'){ repetir(); }
+      if(e.key === '-' || e.key === '_'){ menosCinco(); }
+    });
+
+    pinta();
+  </script>
+</body>
+</html>
